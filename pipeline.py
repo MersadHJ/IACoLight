@@ -98,9 +98,15 @@ class Pipeline:
         if path == None:
             path = self.dic_path["PATH_TO_WORK_DIRECTORY"]
         # copy sumo files
-
-        shutil.copy(os.path.join(self.dic_path["PATH_TO_DATA"], self.dic_exp_conf["TRAFFIC_FILE"][0]),
-                        os.path.join(path, self.dic_exp_conf["TRAFFIC_FILE"][0]))
+        tr_file =  self.dic_exp_conf["TRAFFIC_FILE"][0]
+        idx = tr_file.rfind('_')
+        tr_file = tr_file[:idx]
+        idx = tr_file.rfind('_')
+        tr_file = tr_file[:idx]
+        tr_file+='.json'
+        print(tr_file)
+        shutil.copy(os.path.join(self.dic_path["PATH_TO_DATA"], tr_file),
+                        os.path.join(path, tr_file))
         shutil.copy(os.path.join(self.dic_path["PATH_TO_DATA"], self.dic_exp_conf["ROADNET_FILE"]),
                     os.path.join(path, self.dic_exp_conf["ROADNET_FILE"]))
 

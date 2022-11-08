@@ -1,6 +1,7 @@
 import numpy as np 
 import os 
 import pickle  
+import torch
 from agent import Agent
 import random 
 import time
@@ -8,17 +9,18 @@ import time
 Model for CoLight in paper "CoLight: Learning Network-level Cooperation for Traffic Signal
 Control", in submission. 
 """
-import keras
+from tensorflow.python import keras
 from keras import backend as K
-from keras.optimizers import Adam, RMSprop
+from tensorflow.keras.optimizers import Adam, RMSprop
 import tensorflow as tf
-from keras.layers import Dense, Dropout, Conv2D, Input, Lambda, Flatten, TimeDistributed, merge
-from keras.layers import Add, Reshape, MaxPooling2D, Concatenate, Embedding, RepeatVector
-from keras.models import Model, model_from_json, load_model
-from keras.layers.core import Activation
-from keras.utils import np_utils,to_categorical
-from keras.engine.topology import Layer
-from keras.callbacks import EarlyStopping, TensorBoard
+from tensorflow.keras.layers import Dense, Dropout, Conv2D, Input, Lambda, Flatten, TimeDistributed, Concatenate
+from tensorflow.keras.layers import Add, Reshape, MaxPooling2D, Concatenate, Embedding, RepeatVector
+from tensorflow.keras.models import Model, model_from_json, load_model
+from tensorflow.keras.layers import Activation
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.layers import Layer
+from tensorflow.keras.callbacks import EarlyStopping, TensorBoard
+import IA_Net
 
 # SEED=6666
 # random.seed(SEED)
@@ -30,7 +32,6 @@ class RepeatVector3D(Layer):
     def __init__(self,times,**kwargs):
         super(RepeatVector3D, self).__init__(**kwargs)
         self.times = times
-
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.times, input_shape[1],input_shape[2])
 
@@ -64,7 +65,7 @@ class CoLightAgent(Agent):
 
         self.att_regulatization=dic_agent_conf['att_regularization']
         self.CNN_layers=dic_agent_conf['CNN_layers']
-        
+        self.q_network = None
         #TODO: n_agents should pass as parameter
         self.num_agents=dic_traffic_env_conf['NUM_INTERSECTIONS']
         self.num_neighbors=min(dic_traffic_env_conf['TOP_K_ADJACENCY'],self.num_agents)
@@ -75,7 +76,8 @@ class CoLightAgent(Agent):
         self.num_lanes = np.sum(np.array(list(self.dic_traffic_env_conf["LANE_NUM"].values())))
         self.len_feature=self.compute_len_feature()
         self.memory = self.build_memory()
-
+        self.alpha = dic_traffic_env_conf['ALPHA']
+        self.beta = dic_traffic_env_conf['BETA']
         if cnt_round == 0: 
             # initialization
             self.q_network = self.build_network()
@@ -144,7 +146,14 @@ class CoLightAgent(Agent):
         else:
             decayed_epsilon = self.dic_agent_conf["EPSILON"] * pow(self.dic_agent_conf["EPSILON_DECAY"], cnt_round)
             self.dic_agent_conf["EPSILON"] = max(decayed_epsilon, self.dic_agent_conf["MIN_EPSILON"])
-        
+        self.prev_reward = None
+        # self.IA_net =IA_Net.IA_Net(self.num_agents,self.dic_path["PATH_TO_MODEL"])
+        # if os.path.exists(self.IA_net.PATH):
+        #     print(os.path.exists(self.IA_net.PATH))
+        #     checkpoint = torch.load(self.IA_net.PATH)
+        #     # print(checkpoint['forwardmodel_state_dict'])
+        #     # print(self.forward_model.state_dict())
+        #     self.IA_net.load_state_dict(checkpoint['IA_model'])
 
 
     def compute_len_feature(self):
@@ -325,7 +334,7 @@ class CoLightAgent(Agent):
         return act[0],attention[0] 
 
 
-    def prepare_Xs_Y(self, memory, dic_exp_conf):
+    def prepare_Xs_Y(self, memory, dic_exp_conf,agent):
         """
         
         """
@@ -384,7 +393,71 @@ class CoLightAgent(Agent):
         self.Y=q_values.copy()
         self.Y_total = [q_values.copy()]
         self.Y_total.append(attention)
+
+        # if (self.alpha==0 and self.beta==0.05):
+        #     # params = list(self.IA_net.parameters())
+        #     # optimizer = torch.optim.SGD(params,lr=0.01)
+        #     # print("==================================")
+        #     # print("_reward")
+        #     reward_means = torch.mean(torch.tensor(_reward),dim=0)
+        #     # print(torch.tensor(reward_means).shape)
+        #     # print(self.IA_net.count)
+        #     self.prev_reward =reward_means[agent]
+        #     # MUST DO => this has to be one step behind
+        #     print("=============================")
+        #     print(self.prev_reward)
+        #         # print("We are in rewarddd==============================================================")
+        
+        #     output = self.IA_net(torch.tensor(reward_means,dtype=torch.float64))
+        #     # self.alpha = output[0]
+        #     # self.beta= output[1]
+        #     # print("OUTPUT SHAPPPPPe")
+        #     output= output.reshape(-1,2)
+        #     print("===================")
+        #     print(output.shape)
+        #     print("===================")
+        #     print(output)
+        #     self.alpha = output[:,0]
+        #     self.beta = output[:,1]
+        #     self.agent = agent
+        #     loss = self.compute_IA_loss(self.prev_reward, reward_means)
+        #     print("===================")
+        #     print("We are in optimizerrr")
+        #     optimizer.zero_grad()
+        #     #print(loss.shape)
+        #     loss.backward()
+        #     self.loss = loss.mean()
+        #     print("==============")
+        #     print(self.loss)
+        #     optimizer.step()
+        #     # self.IA_net.count +=1
+        #     torch.save({
+        #         'IA_model': self.IA_net.state_dict(),
+        #     }, self.IA_net.PATH)
         return 
+    def compute_IA_loss(self,prev_reward,reward):
+        #width of the grid
+        w = int(self.num_agents**(1/2))
+        reward = torch.reshape(reward,(w,w))
+        print(self.agent)
+        m = torch.nn.ConstantPad2d((1, 1, 1, 1), 0)
+        new_reward = m(reward)
+        i = (self.agent)//w + 1
+        j = (self.agent)%w + 1
+
+        # MUST DO => agent's reward must be zero
+        # print(new_reward[i][j])
+        print(prev_reward)
+        neighbors_sum = new_reward[i-1][j]+new_reward[i][j-1]+new_reward[i+1][j]+new_reward[i][j+1]
+        neighbors_sum = neighbors_sum/4
+        prev_reward = torch.tensor(prev_reward,requires_grad=True)
+        # new_reward = torch.mean(new_reward)
+        loss = (torch.sub(prev_reward,neighbors_sum))
+        # print(self.alpha.shape)
+        # print(self.beta.shape)
+        # print(loss)
+        return loss
+ 
 
     #TODO: MLP_layers should be defined in the conf file
     #TODO: CNN_layers should be defined in the conf file

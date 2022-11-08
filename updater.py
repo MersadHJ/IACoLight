@@ -199,12 +199,12 @@ class Updater:
                     sample_set = self.load_sample_with_forget(i)
                     sample_set_all.extend(sample_set)
 
-                self.agents[0].prepare_Xs_Y(sample_set_all, self.dic_exp_conf)
+                self.agents[0].prepare_Xs_Y(sample_set_all, self.dic_exp_conf,i)
 
             else:
                 for i in range(self.dic_traffic_env_conf['NUM_INTERSECTIONS']):
                     sample_set = self.load_sample(i)
-                    self.agents[i].prepare_Xs_Y(sample_set, self.dic_exp_conf)
+                    self.agents[i].prepare_Xs_Y(sample_set, self.dic_exp_conf,i)
         else:
             samples_gcn_df = None
             if False: # Todo decide multi-process
@@ -220,7 +220,7 @@ class Updater:
                         samples_gcn_df = samples_set_df
                     else:
                         # print(samples_set_df[['time','generator']])
-                        samples_gcn_df = pd.merge(samples_gcn_df, samples_set_df, how='inner',
+                        samples_gcn_df = pd.Concatenate(samples_gcn_df, samples_set_df, how='inner',
                                                   on=["generator",'time'], suffixes=('','_{0}'.format(i)))
                 intersection_input_columns = ['input'] + ['input_{0}'.format(i+1) for i in range(self.dic_traffic_env_conf['NUM_INTERSECTIONS']-1)]
                 for i in range(self.dic_traffic_env_conf['NUM_AGENTS']):
@@ -265,7 +265,7 @@ class Updater:
 
                 for i in range(self.dic_traffic_env_conf['NUM_AGENTS']):
                         sample_set_list = samples_gcn_df.values.tolist()
-                        self.agents[i].prepare_Xs_Y(sample_set_list, self.dic_exp_conf)
+                        self.agents[i].prepare_Xs_Y(sample_set_list, self.dic_exp_conf,i)
 
         print("------------------Load samples time: ", time.time()-start_time)
 

@@ -14,7 +14,7 @@ import threading
 from multiprocessing import Process, Pool
 from script import get_traffic_volume
 from copy import deepcopy
-
+rewards = [0]*16#it's hard coded
 class RoadNet:
 
     def __init__(self, roadnet_file):
@@ -26,7 +26,7 @@ class RoadNet:
         self.generate_node_dict()
         self.generate_edge_dict()
         self.generate_lane_dict()
-
+        
     def generate_node_dict(self):
         '''
         node dict has key as node id, value could be the dict of input nodes and output nodes
@@ -265,6 +265,7 @@ class Intersection:
 
         self.dic_feature = {}  # this second
         self.dic_feature_previous_step = {}  # this second
+        self.rewards = [0]
 
     def build_adjacency_row_lane(self, lane_id_to_global_index_dict):
         self.adjacency_row_lanes = [] # order is the entering lane order, each element is list of two lists
@@ -527,7 +528,7 @@ class Intersection:
         dic_feature["vehicle_waiting_time_img"] = None #self._get_lane_vehicle_accumulated_waiting_time(self.list_entering_lanes)
 
         dic_feature["lane_num_vehicle"] = self._get_lane_num_vehicle(self.list_entering_lanes)
-        dic_feature["pressure"] = None # [self._get_pressure()]
+        dic_feature["pressure"] =[self._get_pressure()]
 
         if self.fast_compute:
             dic_feature["coming_vehicle"] = None
@@ -749,12 +750,12 @@ class Intersection:
         dic_reward["flickering"] = None
         dic_reward["sum_lane_queue_length"] = None
         dic_reward["sum_lane_wait_time"] = None
-        dic_reward["sum_lane_num_vehicle_left"] = None
+        dic_reward["sum_lane_num_vehicle_left"] =  None
         dic_reward["sum_duration_vehicle_left"] = None
         dic_reward["sum_num_vehicle_been_stopped_thres01"] = None
         dic_reward["sum_num_vehicle_been_stopped_thres1"] = np.sum(self.dic_feature["lane_num_vehicle_been_stopped_thres1"])
 
-        dic_reward['pressure'] = None # np.sum(self.dic_feature["pressure"])
+        dic_reward['pressure'] = None #np.sum(self.dic_feature["pressure"])
 
         reward = 0
         for r in dic_reward_info:
@@ -771,6 +772,7 @@ class AnonEnv:
         self.path_to_log = path_to_log
         self.path_to_work_directory = path_to_work_directory
         self.dic_traffic_env_conf = dic_traffic_env_conf
+        #self.dic_agent_conf = dic_agent_conf
         self.simulator_type = self.dic_traffic_env_conf["SIMULATOR_TYPE"]
 
         self.list_intersection = None
@@ -790,22 +792,27 @@ class AnonEnv:
             path_to_log_file = os.path.join(self.path_to_log, "inter_{0}.pkl".format(inter_ind))
             f = open(path_to_log_file, "wb")
             f.close()
-
+        self.eligibilty_rewards = [0]*self.dic_traffic_env_conf["NUM_INTERSECTIONS"]
     def reset(self):
 
         print("# self.eng.reset() to be implemented")
-
+        tr_file =  self.dic_traffic_env_conf["TRAFFIC_FILE"]
+        idx = tr_file.rfind('_')
+        tr_file = tr_file[:idx]
+        idx = tr_file.rfind('_')
+        tr_file = tr_file[:idx]
+        tr_file+='.json'
         cityflow_config = {
             "interval": self.dic_traffic_env_conf["INTERVAL"],
             "seed": 0,
             "laneChange": False,
             "dir": self.path_to_work_directory+"/",
             "roadnetFile": self.dic_traffic_env_conf["ROADNET_FILE"],
-            "flowFile": self.dic_traffic_env_conf["TRAFFIC_FILE"],
+            "flowFile": tr_file,
             "rlTrafficLight": self.dic_traffic_env_conf["RLTRAFFICLIGHT"],
             "saveReplay": self.dic_traffic_env_conf["SAVEREPLAY"],
-            "roadnetLogFile": "frontend/web/roadnetLogFile.json",
-            "replayLogFile": "frontend/web/replayLogFile.txt"
+            "roadnetLogFile": "roadnetLogFile.json",
+            "replayLogFile": "replayLogFile.txt"
         }
         print("=========================")
         print(cityflow_config)
@@ -1073,9 +1080,18 @@ class AnonEnv:
         return list(new_list)
 
     def get_reward(self):
-
+        alpha = self.dic_traffic_env_conf["ALPHA"]
+        beta = self.dic_traffic_env_conf["BETA"]
+        new_rew = [0]*len(self.list_intersection)
         list_reward = [inter.get_reward(self.dic_traffic_env_conf["DIC_REWARD_INFO"]) for inter in self.list_intersection]
-
+        self.eligibilty_rewards = [list_reward[i] + (0.7*self.eligibilty_rewards[i])  for i in range(len(self.list_intersection)) ]
+        for i in range(len(self.list_intersection)):
+            for j in range(len(self.list_intersection)):
+                if i!= j:
+                    new_rew[i] += np.max(self.eligibilty_rewards[i]-self.eligibilty_rewards[j],0)                   
+            new_rew[i] = new_rew[i]*(alpha+beta)/(len(self.list_intersection)-1)
+            list_reward[i] -=new_rew [i]
+        list_reward = [inter.get_reward(self.dic_traffic_env_conf["DIC_REWARD_INFO"]) for inter in self.list_intersection]
         return list_reward
 
     def get_current_time(self):
@@ -1487,6 +1503,7 @@ if __name__ == '__main__':
     "PATIENCE": 10,
     "D_DENSE": 20,
     "N_LAYER": 2,
+    
     #special care for pretrain
     "EPSILON": 0.8,
     "EPSILON_DECAY": 0.95,
@@ -1537,7 +1554,7 @@ if __name__ == '__main__':
         "BINARY_PHASE_EXPANSION": True,
         "FAST_COMPUTE": True,
         'NUM_AGENTS': 1,
-
+        
         "NEIGHBOR": False,
         "MODEL_NAME": "STGAT",
         "SIMULATOR_TYPE": "anon",
@@ -1652,7 +1669,7 @@ if __name__ == '__main__':
     path_to_log = os.path.join(dic_path["PATH_TO_WORK_DIRECTORY"], "train_round",
                                     "round_" + str(0), "generator_" + str(0))
 
-    env = AnonEnv(path_to_log, dic_path["PATH_TO_WORK_DIRECTORY"], dic_traffic_env_conf)
+    env = AnonEnv(path_to_log, dic_path["PATH_TO_WORK_DIRECTORY"], dic_traffic_env_conf,dic_agent_conf)
     env.reset()
     print("finish")
 

@@ -15,10 +15,10 @@ multi_process = True
 TOP_K_ADJACENCY=-1
 TOP_K_ADJACENCY_LANE=-1
 PRETRAIN=False
-NUM_ROUNDS=100
+NUM_ROUNDS=200
 EARLY_STOP=False 
 NEIGHBOR=False
-SAVEREPLAY=False
+SAVEREPLAY=True
 ADJACENCY_BY_CONNECTION_OR_GEO=False
 hangzhou_archive=True
 ANON_PHASE_REPRE=[]
@@ -26,10 +26,10 @@ ANON_PHASE_REPRE=[]
 def parse_args():
     parser = argparse.ArgumentParser()
     # The file folder to create/log in
-    parser.add_argument("--memo", type=str, default='0515_afternoon_Colight_6_6_bi')#1_3,2_2,3_3,4_4
+    parser.add_argument("--memo", type=str, default='0515_afternoon_Colight_3_3_bi')#1_3,2_2,3_3,4_4
     parser.add_argument("--env", type=int, default=1) #env=1 means you will run CityFlow
     parser.add_argument("--gui", type=bool, default=False)
-    parser.add_argument("--road_net", type=str, default='6_6')#'1_2') # which road net you are going to run
+    parser.add_argument("--road_net", type=str, default='3_3')#'1_2') # which road net you are going to run
     parser.add_argument("--volume", type=str, default='300')#'300'
     parser.add_argument("--suffix", type=str, default="0.3_bi")#0.3
 
@@ -40,14 +40,14 @@ def parse_args():
     global TOP_K_ADJACENCY_LANE
     TOP_K_ADJACENCY_LANE=5
     global NUM_ROUNDS
-    NUM_ROUNDS=100
+    NUM_ROUNDS=200
     global EARLY_STOP
     EARLY_STOP=False
     global NEIGHBOR
     # TAKE CARE
     NEIGHBOR=False
     global SAVEREPLAY # if you want to relay your simulation, set it to be True
-    SAVEREPLAY=False
+    SAVEREPLAY=True
     global ADJACENCY_BY_CONNECTION_OR_GEO
     # TAKE CARE
     ADJACENCY_BY_CONNECTION_OR_GEO=False
@@ -62,7 +62,8 @@ def parse_args():
     parser.add_argument("-all", action="store_true", default=False)
     parser.add_argument("--workers",type=int, default=7)
     parser.add_argument("--onemodel",type=bool, default=False)
-
+    parser.add_argument("--alpha",type=float, default=1)#1
+    parser.add_argument("--beta",type=float, default=0.05)#0.05
     parser.add_argument("--visible_gpu", type=str, default="-1")
     global ANON_PHASE_REPRE
     tt=parser.parse_args()
@@ -106,7 +107,7 @@ def memo_rename(traffic_file_list):
     new_name = new_name[:-1]
     return new_name
 
-def merge(dic_tmp, dic_to_change):
+def Concatenate(dic_tmp, dic_to_change):
     dic_result = copy.deepcopy(dic_tmp)
     dic_result.update(dic_to_change)
 
@@ -133,9 +134,9 @@ def pipeline_wrapper(dic_exp_conf, dic_agent_conf, dic_traffic_env_conf, dic_pat
 
 
 
-def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers, onemodel):
+def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers, onemodel,alpha,beta):
 
-    # main(args.memo, args.env, args.road_net, args.gui, args.volume, args.ratio, args.mod, args.cnt, args.gen)
+    # main(args.memo, args.env, args.road_net, args.gui, args.volume, args.ratio, args.mod, args.cnt, args.gen,args.alpha,args.beta)
     #Jinan_3_4
     NUM_COL = int(road_net.split('_')[0])
     NUM_ROW = int(road_net.split('_')[1])
@@ -147,7 +148,7 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
     if r_all:
         traffic_file_list = [ENVIRONMENT+"_"+road_net+"_%d_%s" %(v,suffix) for v in range(100,400,100)]
     else:
-        traffic_file_list=["{0}_{1}_{2}_{3}".format(ENVIRONMENT, road_net, volume, suffix)]
+        traffic_file_list=["{0}_{1}_{2}_{3}_{4}_{5}".format(ENVIRONMENT, road_net, volume, suffix,alpha,beta)]
 
 
     if env:
@@ -173,7 +174,7 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
 
             "NUM_ROUNDS": NUM_ROUNDS,
             "NUM_GENERATORS": gen,
-
+          
             "MODEL_POOL": False,
             "NUM_BEST_MODEL": 3,
 
@@ -194,7 +195,7 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
             "UPDATE_Q_BAR_EVERY_C_ROUND": False,
             "UPDATE_Q_BAR_FREQ": 5,
             # network
-
+            
             "N_LAYER": 2,
             "TRAFFIC_FILE": traffic_file,
         }
@@ -223,8 +224,8 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
 
             "NEIGHBOR": NEIGHBOR,
             "MODEL_NAME": mod,
-
-
+              "ALPHA":alpha,
+              "BETA":beta,
 
             "SAVEREPLAY": SAVEREPLAY,
             "NUM_ROW": NUM_ROW,
@@ -437,8 +438,8 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
         print(traffic_file)
         prefix_intersections = str(road_net)
         dic_path_extra = {
-            "PATH_TO_MODEL": os.path.join("model", memo, traffic_file + "_" + time.strftime('%m_%d_%H_%M_%S', time.localtime(time.time()))),
-            "PATH_TO_WORK_DIRECTORY": os.path.join("records", memo, traffic_file + "_" + time.strftime('%m_%d_%H_%M_%S', time.localtime(time.time()))),
+            "PATH_TO_MODEL": os.path.join("model", memo, traffic_file + "_"+ time.strftime('%m_%d_%H_%M_%S', time.localtime(time.time()))),
+            "PATH_TO_WORK_DIRECTORY": os.path.join("records", memo,traffic_file + "_"+ time.strftime('%m_%d_%H_%M_%S' , time.localtime(time.time()))),
 
             "PATH_TO_DATA": os.path.join("data", template, prefix_intersections),
             "PATH_TO_PRETRAIN_MODEL": os.path.join("model", "initial", traffic_file),
@@ -446,15 +447,15 @@ def main(memo, env, road_net, gui, volume, suffix, mod, cnt, gen, r_all, workers
             "PATH_TO_ERROR": os.path.join("errors", memo)
         }
 
-        deploy_dic_exp_conf = merge(config.DIC_EXP_CONF, dic_exp_conf_extra)
-        deploy_dic_agent_conf = merge(getattr(config, "DIC_{0}_AGENT_CONF".format(mod.upper())),
+        deploy_dic_exp_conf = Concatenate(config.DIC_EXP_CONF, dic_exp_conf_extra)
+        deploy_dic_agent_conf = Concatenate(getattr(config, "DIC_{0}_AGENT_CONF".format(mod.upper())),
                                       dic_agent_conf_extra)
-        deploy_dic_traffic_env_conf = merge(config.dic_traffic_env_conf, dic_traffic_env_conf_extra)
+        deploy_dic_traffic_env_conf = Concatenate(config.dic_traffic_env_conf, dic_traffic_env_conf_extra)
 
         # TODO add agent_conf for different agents
         # deploy_dic_agent_conf_all = [deploy_dic_agent_conf for i in range(deploy_dic_traffic_env_conf["NUM_AGENTS"])]
 
-        deploy_dic_path = merge(config.DIC_PATH, dic_path_extra)
+        deploy_dic_path = Concatenate(config.DIC_PATH, dic_path_extra)
 
         if multi_process:
             ppl = Process(target=pipeline_wrapper,
@@ -490,11 +491,11 @@ if __name__ == "__main__":
     args = parse_args()
     #memo = "multi_phase/optimal_search_new/new_headway_anon"
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.visible_gpu
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     main(args.memo, args.env, args.road_net, args.gui, args.volume,
          args.suffix, args.mod, args.cnt, args.gen, args.all, args.workers,
-         args.onemodel)
+         args.onemodel,args.alpha,args.beta)
 
 
 
